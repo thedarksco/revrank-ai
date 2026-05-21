@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS public.clients (
     gbp_connection_date TIMESTAMPTZ,
     gbp_last_sync TIMESTAMPTZ,
 
+    -- Google Account Association
+    google_account_id UUID REFERENCES public.google_accounts(id) ON DELETE SET NULL,
+    gbp_manager_id UUID REFERENCES public.gbp_managers(id) ON DELETE SET NULL,
+
     -- Business Details
     business_category TEXT,
     business_hours JSONB,
@@ -74,12 +78,40 @@ CREATE TABLE IF NOT EXISTS public.clients (
 );
 
 -- =====================================================
--- GOOGLE AUTH TOKENS
+-- GOOGLE ACCOUNTS & TOKENS
 -- =====================================================
 
+-- Store multiple Google accounts per user
+CREATE TABLE IF NOT EXISTS public.google_accounts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+
+    -- Account Info
+    google_account_id TEXT NOT NULL, -- Google's unique account ID
+    email TEXT NOT NULL,
+    name TEXT,
+    picture_url TEXT,
+    account_type TEXT DEFAULT 'standard', -- 'standard', 'manager', 'location'
+    hosted_domain TEXT, -- For G Suite accounts
+
+    -- Manager Account Info (if this is a manager account)
+    is_manager BOOLEAN DEFAULT false,
+    managed_accounts TEXT[], -- Array of managed account IDs
+
+    -- Connection Status
+    is_active BOOLEAN DEFAULT true,
+    last_connected TIMESTAMPTZ DEFAULT NOW(),
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(user_id, google_account_id)
+);
+
+-- Store tokens per Google account
 CREATE TABLE IF NOT EXISTS public.google_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    client_id UUID REFERENCES public.clients(id) ON DELETE CASCADE,
+    google_account_id UUID REFERENCES public.google_accounts(id) ON DELETE CASCADE,
     user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
 
     access_token TEXT NOT NULL,
@@ -88,7 +120,33 @@ CREATE TABLE IF NOT EXISTS public.google_tokens (
     scope TEXT[],
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(google_account_id)
+);
+
+-- Track GBP manager relationships
+CREATE TABLE IF NOT EXISTS public.gbp_managers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    google_account_id UUID REFERENCES public.google_accounts(id) ON DELETE CASCADE,
+
+    -- Manager Account Info
+    manager_account_name TEXT,
+    manager_account_id TEXT NOT NULL,
+    account_role TEXT, -- 'OWNER', 'MANAGER', 'SITE_MANAGER'
+
+    -- Location Info
+    location_account_name TEXT,
+    location_account_id TEXT NOT NULL,
+    location_place_id TEXT,
+
+    is_active BOOLEAN DEFAULT true,
+    last_synced TIMESTAMPTZ DEFAULT NOW(),
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(google_account_id, manager_account_id, location_account_id)
 );
 
 -- =====================================================
@@ -340,6 +398,18 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
 CREATE INDEX idx_clients_user_id ON public.clients(user_id);
 CREATE INDEX idx_clients_status ON public.clients(status);
 CREATE INDEX idx_clients_gbp_place_id ON public.clients(gbp_place_id);
+CREATE INDEX idx_clients_google_account_id ON public.clients(google_account_id);
+
+CREATE INDEX idx_google_accounts_user_id ON public.google_accounts(user_id);
+CREATE INDEX idx_google_accounts_google_account_id ON public.google_accounts(google_account_id);
+CREATE INDEX idx_google_accounts_email ON public.google_accounts(email);
+
+CREATE INDEX idx_google_tokens_google_account_id ON public.google_tokens(google_account_id);
+CREATE INDEX idx_google_tokens_user_id ON public.google_tokens(user_id);
+
+CREATE INDEX idx_gbp_managers_google_account_id ON public.gbp_managers(google_account_id);
+CREATE INDEX idx_gbp_managers_manager_account_id ON public.gbp_managers(manager_account_id);
+CREATE INDEX idx_gbp_managers_location_account_id ON public.gbp_managers(location_account_id);
 
 CREATE INDEX idx_posts_client_id ON public.posts(client_id);
 CREATE INDEX idx_posts_status ON public.posts(status);
@@ -366,7 +436,9 @@ CREATE INDEX idx_review_contacts_sequence_status ON public.review_contacts(seque
 -- Enable RLS on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.google_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.google_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gbp_managers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.keywords ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rank_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
@@ -397,8 +469,64 @@ CREATE POLICY "Users can update own clients" ON public.clients
 CREATE POLICY "Users can delete own clients" ON public.clients
     FOR DELETE USING (auth.uid() = user_id);
 
--- Apply similar policies to other tables
--- (I'll add more specific policies as needed)
+-- Google accounts policies
+CREATE POLICY "Users can view own google accounts" ON public.google_accounts
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create google accounts" ON public.google_accounts
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own google accounts" ON public.google_accounts
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own google accounts" ON public.google_accounts
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Google tokens policies
+CREATE POLICY "Users can view own google tokens" ON public.google_tokens
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create google tokens" ON public.google_tokens
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own google tokens" ON public.google_tokens
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own google tokens" ON public.google_tokens
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- GBP managers policies
+CREATE POLICY "Users can view own gbp managers" ON public.gbp_managers
+    FOR SELECT USING (
+        auth.uid() = (
+            SELECT user_id FROM public.google_accounts
+            WHERE id = google_account_id
+        )
+    );
+
+CREATE POLICY "Users can create gbp managers" ON public.gbp_managers
+    FOR INSERT WITH CHECK (
+        auth.uid() = (
+            SELECT user_id FROM public.google_accounts
+            WHERE id = google_account_id
+        )
+    );
+
+CREATE POLICY "Users can update own gbp managers" ON public.gbp_managers
+    FOR UPDATE USING (
+        auth.uid() = (
+            SELECT user_id FROM public.google_accounts
+            WHERE id = google_account_id
+        )
+    );
+
+CREATE POLICY "Users can delete own gbp managers" ON public.gbp_managers
+    FOR DELETE USING (
+        auth.uid() = (
+            SELECT user_id FROM public.google_accounts
+            WHERE id = google_account_id
+        )
+    );
 
 -- =====================================================
 -- TRIGGERS
@@ -417,6 +545,15 @@ CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER update_clients_updated_at BEFORE UPDATE ON public.clients
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_google_accounts_updated_at BEFORE UPDATE ON public.google_accounts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_google_tokens_updated_at BEFORE UPDATE ON public.google_tokens
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_gbp_managers_updated_at BEFORE UPDATE ON public.gbp_managers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER update_posts_updated_at BEFORE UPDATE ON public.posts

@@ -28,20 +28,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    // Delete Google tokens
-    await supabase
-      .from('google_tokens')
-      .delete()
-      .eq('client_id', clientId)
+    // Get client's current Google account association
+    const { data: clientData } = await supabase
+      .from('clients')
+      .select('google_account_id, gbp_manager_id')
+      .eq('id', clientId)
+      .single()
+
+    // Don't delete tokens - just disconnect from client
+    // Tokens are tied to Google accounts and may be used by other clients
+
+    // Deactivate manager relationship if exists
+    if (clientData?.gbp_manager_id) {
+      await supabase
+        .from('gbp_managers')
+        .update({
+          is_active: false,
+          last_synced: new Date().toISOString()
+        })
+        .eq('id', clientData.gbp_manager_id)
+    }
 
     // Update client GBP connection status
     await supabase
       .from('clients')
       .update({
+        google_account_id: null,
+        gbp_manager_id: null,
         gbp_connected: false,
         gbp_connection_date: null,
         gbp_account_id: null,
         gbp_location_id: null,
+        gbp_place_id: null,
         updated_at: new Date().toISOString()
       })
       .eq('id', clientId)

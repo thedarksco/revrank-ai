@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import GoogleAccountManager from './GoogleAccountManager'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -114,6 +115,11 @@ export default async function DashboardPage() {
               </div>
             </div>
           </Link>
+        </div>
+
+        {/* Google Account Manager */}
+        <div className="mb-8">
+          <GoogleAccountManager />
         </div>
 
         {/* Quick Actions */}

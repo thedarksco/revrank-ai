@@ -3,11 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { status } = await request.json()
-    const clientId = params.id
+    const { id: clientId } = await params
 
     if (!status || !['active', 'paused', 'archived'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })

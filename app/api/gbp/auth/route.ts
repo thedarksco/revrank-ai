@@ -11,6 +11,8 @@ const GBP_SCOPES = [
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const clientId = searchParams.get('clientId')
+  const accountSelection = searchParams.get('accountSelection') === 'true'
+  const hostedDomain = searchParams.get('hd') // For G Suite domain accounts
 
   if (!clientId) {
     return NextResponse.json({ error: 'Client ID required' }, { status: 400 })
@@ -44,7 +46,25 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.append('scope', GBP_SCOPES)
   authUrl.searchParams.append('access_type', 'offline')
   authUrl.searchParams.append('prompt', 'consent')
-  authUrl.searchParams.append('state', JSON.stringify({ clientId, userId: user.id }))
+
+  // Enhanced state with account selection preference
+  const state = {
+    clientId,
+    userId: user.id,
+    accountSelection,
+    hostedDomain
+  }
+  authUrl.searchParams.append('state', JSON.stringify(state))
+
+  // Force account selection for better UX when managing multiple accounts
+  if (accountSelection) {
+    authUrl.searchParams.append('prompt', 'select_account consent')
+  }
+
+  // Add hosted domain hint for G Suite accounts
+  if (hostedDomain) {
+    authUrl.searchParams.append('hd', hostedDomain)
+  }
 
   return NextResponse.redirect(authUrl.toString())
 }

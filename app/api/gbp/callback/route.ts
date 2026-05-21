@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Parse state to get clientId and userId
-    const { clientId, userId } = JSON.parse(state)
+    // Parse state to get clientId, userId, and account selection preferences
+    const { clientId, userId, accountSelection, hostedDomain } = JSON.parse(state)
 
     // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -43,6 +43,18 @@ export async function GET(request: NextRequest) {
 
     const tokens = await tokenResponse.json()
 
+    // Get user info from Google to identify the specific account
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        'Authorization': `Bearer ${tokens.access_token}`,
+      },
+    })
+
+    let userInfo = null
+    if (userInfoResponse.ok) {
+      userInfo = await userInfoResponse.json()
+    }
+
     // Save tokens to database
     const supabase = await createClient()
 
@@ -58,11 +70,40 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/clients?error=unauthorized', request.url))
     }
 
+    let googleAccountId = null
+
+    // Store or update Google account info
+    if (userInfo) {
+      const { data: googleAccount, error: accountError } = await supabase
+        .from('google_accounts')
+        .upsert({
+          user_id: userId,
+          google_account_id: userInfo.id,
+          email: userInfo.email,
+          name: userInfo.name,
+          picture_url: userInfo.picture,
+          account_type: hostedDomain ? 'gsuite' : 'standard',
+          hosted_domain: hostedDomain,
+          is_active: true,
+          last_connected: new Date().toISOString()
+        }, {
+          onConflict: 'user_id, google_account_id'
+        })
+        .select()
+        .single()
+
+      if (accountError) {
+        console.error('Failed to save Google account:', accountError)
+      } else {
+        googleAccountId = googleAccount.id
+      }
+    }
+
     // Store or update Google tokens
     const { error: tokenError } = await supabase
       .from('google_tokens')
       .upsert({
-        client_id: clientId,
+        google_account_id: googleAccountId,
         user_id: userId,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
@@ -70,7 +111,7 @@ export async function GET(request: NextRequest) {
         scope: tokens.scope ? tokens.scope.split(' ') : [],
         updated_at: new Date().toISOString()
       }, {
-        onConflict: 'client_id'
+        onConflict: 'google_account_id'
       })
 
     if (tokenError) {
@@ -78,10 +119,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(`/clients/${clientId}?error=save_failed`, request.url))
     }
 
-    // Update client GBP connection status
+    // Update client with Google account association and GBP connection status
     const { error: updateError } = await supabase
       .from('clients')
       .update({
+        google_account_id: googleAccountId,
         gbp_connected: true,
         gbp_connection_date: new Date().toISOString(),
         updated_at: new Date().toISOString()
