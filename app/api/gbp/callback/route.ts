@@ -104,13 +104,48 @@ export async function GET(request: NextRequest) {
           details: accountError.details,
           hint: accountError.hint,
           userId: parsedState.userId,
-          googleAccountId: userInfo.id
+          googleAccountId: userInfo.id,
+          userInfo: userInfo
         })
-        // If table doesn't exist, redirect with specific error
+
+        // Check specific error types
         if (accountError.message?.includes('relation') && accountError.message?.includes('does not exist')) {
           const redirectUrl = parsedState.clientId
             ? `/clients/${parsedState.clientId}?error=tables_not_found`
             : '/dashboard?error=tables_not_found'
+          return NextResponse.redirect(new URL(redirectUrl, request.url))
+        }
+
+        if (accountError.message?.includes('violates foreign key constraint')) {
+          const redirectUrl = parsedState.clientId
+            ? `/clients/${parsedState.clientId}?error=user_not_found`
+            : '/dashboard?error=user_not_found'
+          return NextResponse.redirect(new URL(redirectUrl, request.url))
+        }
+
+        if (accountError.message?.includes('duplicate key')) {
+          // Try to get existing account
+          const { data: existingAccount } = await supabase
+            .from('google_accounts')
+            .select('id')
+            .eq('user_id', parsedState.userId)
+            .eq('google_account_id', userInfo.id)
+            .single()
+
+          if (existingAccount) {
+            googleAccountId = existingAccount.id
+            console.log('Using existing Google account:', googleAccountId)
+          } else {
+            const redirectUrl = parsedState.clientId
+              ? `/clients/${parsedState.clientId}?error=duplicate_account`
+              : '/dashboard?error=duplicate_account'
+            return NextResponse.redirect(new URL(redirectUrl, request.url))
+          }
+        } else {
+          // Generic error
+          const redirectUrl = parsedState.clientId
+            ? `/clients/${parsedState.clientId}?error=save_failed`
+            : '/dashboard?error=save_failed'
           return NextResponse.redirect(new URL(redirectUrl, request.url))
         }
       } else if (googleAccount) {

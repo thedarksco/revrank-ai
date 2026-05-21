@@ -50,6 +50,10 @@ export default function GoogleAccountManager() {
       setError('Database tables not found. Please run the migration script in Supabase SQL Editor.')
     } else if (errorParam === 'save_failed') {
       setError('Failed to save Google account information. Please try again.')
+    } else if (errorParam === 'user_not_found') {
+      setError('User profile not found in database. Please refresh and try again.')
+    } else if (errorParam === 'duplicate_account') {
+      setError('This Google account is already connected.')
     } else if (errorParam === 'unexpected_error') {
       setError('An unexpected error occurred. Please try again.')
     }
