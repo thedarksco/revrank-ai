@@ -47,7 +47,9 @@ export async function GET(request: NextRequest) {
   // Log for debugging
   console.log('OAuth redirect URI being used:', redirectUri)
   console.log('Environment:', process.env.NODE_ENV)
-  authUrl.searchParams.append('redirect_uri', redirectUri)
+
+  // Use set instead of append to ensure no encoding issues
+  authUrl.searchParams.set('redirect_uri', redirectUri)
   authUrl.searchParams.append('response_type', 'code')
   authUrl.searchParams.append('scope', GBP_SCOPES)
   authUrl.searchParams.append('access_type', 'offline')
