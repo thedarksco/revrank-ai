@@ -41,8 +41,21 @@ function AuthContent() {
       setLoading(true)
       setError(null)
 
-      // Use window.location.origin which automatically adapts to the current domain
-      const redirectUrl = `${window.location.origin}/auth/callback`
+      // Explicitly use the correct domain based on the current location
+      const isProduction = window.location.hostname === 'revrank-ai.vercel.app'
+      const isDevelopment = window.location.hostname === 'localhost'
+
+      let redirectUrl: string
+      if (isProduction) {
+        redirectUrl = 'https://revrank-ai.vercel.app/auth/callback'
+      } else if (isDevelopment) {
+        redirectUrl = 'http://localhost:3000/auth/callback'
+      } else {
+        // Fallback to current origin for other environments
+        redirectUrl = `${window.location.origin}/auth/callback`
+      }
+
+      console.log('OAuth redirect URL:', redirectUrl)
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
