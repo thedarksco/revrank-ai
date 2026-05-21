@@ -3,6 +3,53 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+function TestGoogleAccount() {
+  const [result, setResult] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+
+  const testGoogleAccountCreation = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/test-google-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_google_account_id: 'test_' + Date.now(),
+          email: 'test@example.com',
+          name: 'Test User'
+        })
+      })
+      const data = await response.json()
+      setResult(data)
+    } catch (error: any) {
+      setResult({ error: error.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={testGoogleAccountCreation}
+        disabled={loading}
+        className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50"
+      >
+        {loading ? 'Testing...' : 'Test Google Account Creation'}
+      </button>
+
+      {result && (
+        <div className="mt-4">
+          <h4 className="font-semibold mb-2">Test Result:</h4>
+          <pre className="bg-gray-100 p-3 rounded text-sm overflow-auto max-h-96">
+            {JSON.stringify(result, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TestSupabase() {
   const [status, setStatus] = useState<string>('Checking connection...')
   const [details, setDetails] = useState<any>(null)
@@ -92,6 +139,11 @@ export default function TestSupabase() {
             <li>Enable Google OAuth in Supabase Authentication settings</li>
             <li>Restart your Next.js dev server after adding env vars</li>
           </ol>
+        </div>
+
+        <div className="mt-6 bg-green-50 border border-green-200 rounded-md p-4">
+          <h3 className="font-semibold mb-4">🧪 Test Google Account Creation</h3>
+          <TestGoogleAccount />
         </div>
 
         <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
