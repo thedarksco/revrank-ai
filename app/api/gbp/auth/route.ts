@@ -38,30 +38,28 @@ export async function GET(request: NextRequest) {
 
   // Build Google OAuth URL
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-  authUrl.searchParams.append('client_id', process.env.GOOGLE_CLIENT_ID!)
 
   // Force production URL to always be the same
   // Must match EXACTLY what's in Google Cloud Console
   const redirectUri = 'https://revrank-ai.vercel.app/api/gbp/callback'
 
-  // Log for debugging
-  console.log('OAuth redirect URI being used:', redirectUri)
-  console.log('Environment:', process.env.NODE_ENV)
-
-  // Use set instead of append to ensure no encoding issues
-  authUrl.searchParams.set('redirect_uri', redirectUri)
-  authUrl.searchParams.append('response_type', 'code')
-  authUrl.searchParams.append('scope', GBP_SCOPES)
-  authUrl.searchParams.append('access_type', 'offline')
+  // Build params manually to ensure exact formatting
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID!,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: GBP_SCOPES,
+    access_type: 'offline'
+  })
 
   // Set prompt based on account selection preference
   // Google OAuth only accepts a single prompt value, not space-separated
   if (accountSelection) {
     // Use select_account to force account picker (this also triggers consent when needed)
-    authUrl.searchParams.append('prompt', 'select_account')
+    params.set('prompt', 'select_account')
   } else {
     // Default to consent for refresh token
-    authUrl.searchParams.append('prompt', 'consent')
+    params.set('prompt', 'consent')
   }
 
   // Enhanced state with account selection preference
@@ -71,12 +69,17 @@ export async function GET(request: NextRequest) {
     accountSelection,
     hostedDomain
   }
-  authUrl.searchParams.append('state', JSON.stringify(state))
+  params.set('state', JSON.stringify(state))
 
   // Add hosted domain hint for G Suite accounts
   if (hostedDomain) {
-    authUrl.searchParams.append('hd', hostedDomain)
+    params.set('hd', hostedDomain)
   }
 
-  return NextResponse.redirect(authUrl.toString())
+  // Construct final URL
+  const finalUrl = `${authUrl.toString()}?${params.toString()}`
+  console.log('Final OAuth URL:', finalUrl)
+  console.log('Redirect URI in URL:', redirectUri)
+
+  return NextResponse.redirect(finalUrl)
 }
