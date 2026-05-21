@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 interface GoogleAccount {
   id: string
@@ -35,10 +36,29 @@ export default function GoogleAccountManager() {
   const [managerRelationships, setManagerRelationships] = useState<ManagerRelationship[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     fetchAccounts()
-  }, [])
+
+    // Check for error messages from redirect
+    const errorParam = searchParams.get('error')
+    const successParam = searchParams.get('success')
+
+    if (errorParam === 'tables_not_found') {
+      setError('Database tables not found. Please run the migration script in Supabase SQL Editor.')
+    } else if (errorParam === 'save_failed') {
+      setError('Failed to save Google account information. Please try again.')
+    } else if (errorParam === 'unexpected_error') {
+      setError('An unexpected error occurred. Please try again.')
+    }
+
+    if (successParam === 'account_connected') {
+      // Refresh accounts list after successful connection
+      fetchAccounts()
+    }
+  }, [searchParams])
 
   const fetchAccounts = async () => {
     setLoading(true)
@@ -113,6 +133,36 @@ export default function GoogleAccountManager() {
 
   return (
     <div className="bg-white shadow rounded-lg">
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{error}</p>
+              {error.includes('migration script') && (
+                <p className="mt-2 text-sm text-red-600">
+                  Go to your Supabase dashboard → SQL Editor → Run the migration from{' '}
+                  <code className="bg-red-100 px-1 py-0.5 rounded">003_multi_account_support.sql</code>
+                </p>
+              )}
+            </div>
+            <div className="ml-auto pl-3">
+              <button
+                onClick={() => setError(null)}
+                className="inline-flex text-red-400 hover:text-red-500"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium text-gray-900">Google Accounts</h3>

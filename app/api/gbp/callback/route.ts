@@ -100,8 +100,27 @@ export async function GET(request: NextRequest) {
 
       if (accountError) {
         console.error('Failed to save Google account:', accountError)
-      } else {
+        console.error('Account save error details:', {
+          code: accountError.code,
+          message: accountError.message,
+          details: accountError.details,
+          hint: accountError.hint,
+          userId: parsedState.userId,
+          googleAccountId: userInfo.id
+        })
+        // If table doesn't exist, redirect with specific error
+        if (accountError.message?.includes('relation') && accountError.message?.includes('does not exist')) {
+          const redirectUrl = parsedState.clientId
+            ? `/clients/${parsedState.clientId}?error=tables_not_found`
+            : '/dashboard?error=tables_not_found'
+          return NextResponse.redirect(new URL(redirectUrl, request.url))
+        }
+      } else if (googleAccount) {
         googleAccountId = googleAccount.id
+        console.log('Google account saved successfully:', {
+          id: googleAccountId,
+          email: userInfo.email
+        })
       }
     }
 
