@@ -43,7 +43,16 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.append('response_type', 'code')
   authUrl.searchParams.append('scope', GBP_SCOPES)
   authUrl.searchParams.append('access_type', 'offline')
-  authUrl.searchParams.append('prompt', 'consent')
+
+  // Set prompt based on account selection preference
+  // Google OAuth only accepts a single prompt value, not space-separated
+  if (accountSelection) {
+    // Use select_account to force account picker (this also triggers consent when needed)
+    authUrl.searchParams.append('prompt', 'select_account')
+  } else {
+    // Default to consent for refresh token
+    authUrl.searchParams.append('prompt', 'consent')
+  }
 
   // Enhanced state with account selection preference
   const state = {
@@ -53,11 +62,6 @@ export async function GET(request: NextRequest) {
     hostedDomain
   }
   authUrl.searchParams.append('state', JSON.stringify(state))
-
-  // Force account selection for better UX when managing multiple accounts
-  if (accountSelection) {
-    authUrl.searchParams.append('prompt', 'select_account consent')
-  }
 
   // Add hosted domain hint for G Suite accounts
   if (hostedDomain) {
