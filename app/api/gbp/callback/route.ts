@@ -78,19 +78,26 @@ export async function GET(request: NextRequest) {
 
     // Store or update Google account info
     if (userInfo) {
+      console.log('Attempting to save Google account with userInfo:', userInfo)
+      console.log('Parsed state:', parsedState)
+
+      const accountData = {
+        user_id: parsedState.userId,
+        google_account_id: userInfo.id,
+        email: userInfo.email,
+        name: userInfo.name || userInfo.given_name || 'Google User',
+        picture_url: userInfo.picture,
+        account_type: parsedState.hostedDomain ? 'gsuite' : 'standard',
+        hosted_domain: parsedState.hostedDomain,
+        is_active: true,
+        last_connected: new Date().toISOString()
+      }
+
+      console.log('Account data to save:', accountData)
+
       const { data: googleAccount, error: accountError } = await supabase
         .from('google_accounts')
-        .upsert({
-          user_id: parsedState.userId,
-          google_account_id: userInfo.id,
-          email: userInfo.email,
-          name: userInfo.name,
-          picture_url: userInfo.picture,
-          account_type: parsedState.hostedDomain ? 'gsuite' : 'standard',
-          hosted_domain: parsedState.hostedDomain,
-          is_active: true,
-          last_connected: new Date().toISOString()
-        }, {
+        .upsert(accountData, {
           onConflict: 'user_id, google_account_id'
         })
         .select()
