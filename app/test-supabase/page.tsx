@@ -28,19 +28,44 @@ function TestGoogleAccount() {
     }
   }
 
+  const cleanupTestData = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/cleanup-test-data', {
+        method: 'DELETE'
+      })
+      const data = await response.json()
+      setResult(data)
+    } catch (error: any) {
+      setResult({ error: error.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div>
-      <button
-        onClick={testGoogleAccountCreation}
-        disabled={loading}
-        className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50"
-      >
-        {loading ? 'Testing...' : 'Test Google Account Creation'}
-      </button>
+      <div className="space-x-4">
+        <button
+          onClick={testGoogleAccountCreation}
+          disabled={loading}
+          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50"
+        >
+          {loading ? 'Testing...' : 'Test Google Account Creation'}
+        </button>
+
+        <button
+          onClick={cleanupTestData}
+          disabled={loading}
+          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 disabled:opacity-50"
+        >
+          {loading ? 'Cleaning...' : 'Delete Test Accounts'}
+        </button>
+      </div>
 
       {result && (
         <div className="mt-4">
-          <h4 className="font-semibold mb-2">Test Result:</h4>
+          <h4 className="font-semibold mb-2">Result:</h4>
           <pre className="bg-gray-100 p-3 rounded text-sm overflow-auto max-h-96">
             {JSON.stringify(result, null, 2)}
           </pre>
