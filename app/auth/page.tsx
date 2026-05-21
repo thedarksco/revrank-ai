@@ -41,9 +41,12 @@ function AuthContent() {
       setLoading(true)
       setError(null)
 
-      const redirectUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/auth/callback`
-        : `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+      // Determine the correct callback URL based on environment
+      const isDevelopment = process.env.NODE_ENV === 'development'
+      const baseUrl = isDevelopment
+        ? 'http://localhost:3000'
+        : 'https://revrank-ai.vercel.app'
+      const redirectUrl = `${baseUrl}/auth/callback`
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
