@@ -40,11 +40,13 @@ export async function GET(request: NextRequest) {
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.append('client_id', process.env.GOOGLE_CLIENT_ID!)
 
-  // Use the correct redirect URI based on environment
-  // Must match exactly what's configured in Google Cloud Console
-  const redirectUri = process.env.NODE_ENV === 'production'
-    ? 'https://revrank-ai.vercel.app/api/gbp/callback'
-    : 'http://localhost:3000/api/gbp/callback'
+  // Force production URL to always be the same
+  // Must match EXACTLY what's in Google Cloud Console
+  const redirectUri = 'https://revrank-ai.vercel.app/api/gbp/callback'
+
+  // Log for debugging
+  console.log('OAuth redirect URI being used:', redirectUri)
+  console.log('Environment:', process.env.NODE_ENV)
   authUrl.searchParams.append('redirect_uri', redirectUri)
   authUrl.searchParams.append('response_type', 'code')
   authUrl.searchParams.append('scope', GBP_SCOPES)

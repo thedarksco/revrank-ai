@@ -31,9 +31,7 @@ export async function GET(request: NextRequest) {
         code,
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        redirect_uri: process.env.NODE_ENV === 'production'
-          ? 'https://revrank-ai.vercel.app/api/gbp/callback'
-          : 'http://localhost:3000/api/gbp/callback',
+        redirect_uri: 'https://revrank-ai.vercel.app/api/gbp/callback',
         grant_type: 'authorization_code',
       }),
     })
