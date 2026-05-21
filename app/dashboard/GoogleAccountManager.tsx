@@ -44,12 +44,32 @@ export default function GoogleAccountManager() {
 
     // Check for error messages from redirect
     const errorParam = searchParams.get('error')
+    const errorDetailsParam = searchParams.get('errorDetails')
     const successParam = searchParams.get('success')
+    const debugParam = searchParams.get('debug')
+    const debugDataParam = searchParams.get('debugData')
 
     if (errorParam === 'tables_not_found') {
       setError('Database tables not found. Please run the migration script in Supabase SQL Editor.')
     } else if (errorParam === 'save_failed') {
-      setError('Failed to save Google account information. Please try again.')
+      let errorMessage = 'Failed to save Google account information.'
+
+      if (errorDetailsParam) {
+        try {
+          const errorDetails = JSON.parse(decodeURIComponent(errorDetailsParam))
+          errorMessage += `\n\nError Details:\n- Message: ${errorDetails.message}\n- Code: ${errorDetails.code}`
+          if (errorDetails.details) {
+            errorMessage += `\n- Details: ${errorDetails.details}`
+          }
+          if (errorDetails.hint) {
+            errorMessage += `\n- Hint: ${errorDetails.hint}`
+          }
+        } catch (e) {
+          errorMessage += `\n\nRaw error: ${errorDetailsParam}`
+        }
+      }
+
+      setError(errorMessage)
     } else if (errorParam === 'user_not_found') {
       setError('User profile not found in database. Please refresh and try again.')
     } else if (errorParam === 'duplicate_account') {
@@ -61,6 +81,15 @@ export default function GoogleAccountManager() {
     if (successParam === 'account_connected') {
       // Refresh accounts list after successful connection
       fetchAccounts()
+    }
+
+    if (debugParam === 'true' && debugDataParam) {
+      try {
+        const debugData = JSON.parse(decodeURIComponent(debugDataParam))
+        setError(`DEBUG MODE - Google Account Data:\n\n${JSON.stringify(debugData, null, 2)}`)
+      } catch (e) {
+        setError(`DEBUG MODE - Raw data: ${debugDataParam}`)
+      }
     }
   }, [searchParams])
 
@@ -101,9 +130,10 @@ export default function GoogleAccountManager() {
     }
   }
 
-  const connectNewAccount = () => {
+  const connectNewAccount = (debug = false) => {
     // Redirect to OAuth flow for adding a new Google account (no client required)
-    window.location.href = '/api/gbp/auth?accountSelection=true'
+    const debugParam = debug ? '&debug=true' : ''
+    window.location.href = `/api/gbp/auth?accountSelection=true${debugParam}`
   }
 
   const formatDate = (dateString: string) => {
@@ -146,7 +176,13 @@ export default function GoogleAccountManager() {
               </svg>
             </div>
             <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
+              <div className="text-sm text-red-700">
+                {error.split('\n').map((line, index) => (
+                  <div key={index} className={index === 0 ? 'font-medium' : 'mt-1 font-mono text-xs'}>
+                    {line}
+                  </div>
+                ))}
+              </div>
               {error.includes('migration script') && (
                 <p className="mt-2 text-sm text-red-600">
                   Go to your Supabase dashboard → SQL Editor → Run the migration from{' '}
@@ -170,15 +206,26 @@ export default function GoogleAccountManager() {
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium text-gray-900">Google Accounts</h3>
-          <button
-            onClick={connectNewAccount}
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Add Account
-          </button>
+          <div className="space-x-2">
+            <button
+              onClick={() => connectNewAccount(false)}
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Add Account
+            </button>
+            <button
+              onClick={() => connectNewAccount(true)}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Debug Mode
+            </button>
+          </div>
         </div>
       </div>
 

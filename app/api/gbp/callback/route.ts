@@ -81,14 +81,28 @@ export async function GET(request: NextRequest) {
       console.log('Attempting to save Google account with userInfo:', userInfo)
       console.log('Parsed state:', parsedState)
 
+      // If debug mode, redirect with userInfo for inspection
+      if (parsedState.debug) {
+        const debugData = encodeURIComponent(JSON.stringify({
+          userInfo,
+          parsedState,
+          tokens: { ...tokens, access_token: '***', refresh_token: '***' }
+        }))
+        const redirectUrl = parsedState.clientId
+          ? `/clients/${parsedState.clientId}?debug=true&debugData=${debugData}`
+          : `/dashboard?debug=true&debugData=${debugData}`
+        return NextResponse.redirect(new URL(redirectUrl, request.url))
+      }
+
+      // Ensure all required fields have safe defaults
       const accountData = {
         user_id: parsedState.userId,
-        google_account_id: userInfo.id,
-        email: userInfo.email,
-        name: userInfo.name || userInfo.given_name || 'Google User',
-        picture_url: userInfo.picture,
+        google_account_id: String(userInfo.id || 'unknown'),
+        email: String(userInfo.email || 'unknown@google.com'),
+        name: String(userInfo.name || userInfo.given_name || userInfo.family_name || 'Google User'),
+        picture_url: userInfo.picture || null,
         account_type: parsedState.hostedDomain ? 'gsuite' : 'standard',
-        hosted_domain: parsedState.hostedDomain,
+        hosted_domain: parsedState.hostedDomain || null,
         is_active: true,
         last_connected: new Date().toISOString()
       }
@@ -149,10 +163,16 @@ export async function GET(request: NextRequest) {
             return NextResponse.redirect(new URL(redirectUrl, request.url))
           }
         } else {
-          // Generic error
+          // Generic error - include error details in redirect
+          const errorDetails = encodeURIComponent(JSON.stringify({
+            message: accountError.message,
+            code: accountError.code,
+            details: accountError.details,
+            hint: accountError.hint
+          }))
           const redirectUrl = parsedState.clientId
-            ? `/clients/${parsedState.clientId}?error=save_failed`
-            : '/dashboard?error=save_failed'
+            ? `/clients/${parsedState.clientId}?error=save_failed&errorDetails=${errorDetails}`
+            : `/dashboard?error=save_failed&errorDetails=${errorDetails}`
           return NextResponse.redirect(new URL(redirectUrl, request.url))
         }
       } else if (googleAccount) {

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const clientId = searchParams.get('clientId')
   const accountSelection = searchParams.get('accountSelection') === 'true'
   const hostedDomain = searchParams.get('hd') // For G Suite domain accounts
+  const debug = searchParams.get('debug') === 'true'
 
   // Verify user is authenticated
   const supabase = await createClient()
@@ -67,7 +68,8 @@ export async function GET(request: NextRequest) {
     clientId,
     userId: user.id,
     accountSelection,
-    hostedDomain
+    hostedDomain,
+    debug
   }
   params.set('state', JSON.stringify(state))
 
