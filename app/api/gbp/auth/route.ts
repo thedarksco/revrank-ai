@@ -14,10 +14,6 @@ export async function GET(request: NextRequest) {
   const accountSelection = searchParams.get('accountSelection') === 'true'
   const hostedDomain = searchParams.get('hd') // For G Suite domain accounts
 
-  if (!clientId) {
-    return NextResponse.json({ error: 'Client ID required' }, { status: 400 })
-  }
-
   // Verify user is authenticated
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -26,16 +22,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth', request.url))
   }
 
-  // Verify client belongs to user
-  const { data: client } = await supabase
-    .from('clients')
-    .select('id')
-    .eq('id', clientId)
-    .eq('user_id', user.id)
-    .single()
+  // If clientId is provided, verify client belongs to user
+  if (clientId) {
+    const { data: client } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('id', clientId)
+      .eq('user_id', user.id)
+      .single()
 
-  if (!client) {
-    return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+    if (!client) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+    }
   }
 
   // Build Google OAuth URL

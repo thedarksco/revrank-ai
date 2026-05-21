@@ -9,16 +9,17 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('GBP OAuth error:', error)
-    return NextResponse.redirect(new URL('/clients?error=gbp_auth_failed', request.url))
+    return NextResponse.redirect(new URL('/dashboard?error=gbp_auth_failed', request.url))
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL('/clients?error=missing_params', request.url))
+    return NextResponse.redirect(new URL('/dashboard?error=missing_params', request.url))
   }
 
+  let parsedState: any = {}
   try {
     // Parse state to get clientId, userId, and account selection preferences
-    const { clientId, userId, accountSelection, hostedDomain } = JSON.parse(state)
+    parsedState = JSON.parse(state)
 
     // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -38,7 +39,8 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json()
       console.error('Token exchange failed:', errorData)
-      return NextResponse.redirect(new URL(`/clients/${clientId}?error=token_exchange_failed`, request.url))
+      const redirectUrl = parsedState.clientId ? `/clients/${parsedState.clientId}?error=token_exchange_failed` : '/dashboard?error=token_exchange_failed'
+      return NextResponse.redirect(new URL(redirectUrl, request.url))
     }
 
     const tokens = await tokenResponse.json()
@@ -58,16 +60,18 @@ export async function GET(request: NextRequest) {
     // Save tokens to database
     const supabase = await createClient()
 
-    // Verify user owns this client
-    const { data: client } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('id', clientId)
-      .eq('user_id', userId)
-      .single()
+    // If parsedState.clientId is provided, verify user owns this client
+    if (parsedState.clientId) {
+      const { data: client } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('id', parsedState.clientId)
+        .eq('user_id', parsedState.userId)
+        .single()
 
-    if (!client) {
-      return NextResponse.redirect(new URL('/clients?error=unauthorized', request.url))
+      if (!client) {
+        return NextResponse.redirect(new URL('/clients?error=unauthorized', request.url))
+      }
     }
 
     let googleAccountId = null
@@ -77,13 +81,13 @@ export async function GET(request: NextRequest) {
       const { data: googleAccount, error: accountError } = await supabase
         .from('google_accounts')
         .upsert({
-          user_id: userId,
+          user_id: parsedState.userId,
           google_account_id: userInfo.id,
           email: userInfo.email,
           name: userInfo.name,
           picture_url: userInfo.picture,
-          account_type: hostedDomain ? 'gsuite' : 'standard',
-          hosted_domain: hostedDomain,
+          account_type: parsedState.hostedDomain ? 'gsuite' : 'standard',
+          hosted_domain: parsedState.hostedDomain,
           is_active: true,
           last_connected: new Date().toISOString()
         }, {
@@ -104,7 +108,7 @@ export async function GET(request: NextRequest) {
       .from('google_tokens')
       .upsert({
         google_account_id: googleAccountId,
-        user_id: userId,
+        user_id: parsedState.userId,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
@@ -116,29 +120,36 @@ export async function GET(request: NextRequest) {
 
     if (tokenError) {
       console.error('Failed to save tokens:', tokenError)
-      return NextResponse.redirect(new URL(`/clients/${clientId}?error=save_failed`, request.url))
+      const redirectUrl = parsedState.clientId ? `/clients/${parsedState.clientId}?error=save_failed` : '/dashboard?error=save_failed'
+      return NextResponse.redirect(new URL(redirectUrl, request.url))
     }
 
-    // Update client with Google account association and GBP connection status
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({
-        google_account_id: googleAccountId,
-        gbp_connected: true,
-        gbp_connection_date: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', clientId)
+    // Update client with Google account association and GBP connection status (if parsedState.clientId provided)
+    if (parsedState.clientId) {
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({
+          google_account_id: googleAccountId,
+          gbp_connected: true,
+          gbp_connection_date: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', parsedState.clientId)
 
-    if (updateError) {
-      console.error('Failed to update client:', updateError)
+      if (updateError) {
+        console.error('Failed to update client:', updateError)
+      }
+
+      // Redirect to client page with success message
+      return NextResponse.redirect(new URL(`/clients/${parsedState.clientId}?success=gbp_connected`, request.url))
+    } else {
+      // Redirect to dashboard with success message
+      return NextResponse.redirect(new URL('/dashboard?success=account_connected', request.url))
     }
-
-    // Redirect to client page with success message
-    return NextResponse.redirect(new URL(`/clients/${clientId}?success=gbp_connected`, request.url))
 
   } catch (err) {
     console.error('GBP callback error:', err)
-    return NextResponse.redirect(new URL('/clients?error=unexpected_error', request.url))
+    const redirectUrl = parsedState.clientId ? `/clients/${parsedState.clientId}?error=unexpected_error` : '/dashboard?error=unexpected_error'
+    return NextResponse.redirect(new URL(redirectUrl, request.url))
   }
 }

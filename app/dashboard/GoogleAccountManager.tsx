@@ -78,8 +78,8 @@ export default function GoogleAccountManager() {
   }
 
   const connectNewAccount = () => {
-    // Redirect to OAuth flow for adding a new Google account
-    window.location.href = '/api/gbp/auth?clientId=new&accountSelection=true'
+    // Redirect to OAuth flow for adding a new Google account (no client required)
+    window.location.href = '/api/gbp/auth?accountSelection=true'
   }
 
   const formatDate = (dateString: string) => {
