@@ -73,6 +73,23 @@ export async function GET(request: NextRequest) {
     const googleUser = await userInfoResponse.json()
     console.log('Google user info:', { id: googleUser.id, email: googleUser.email, name: googleUser.name })
 
+    // CRITICAL: Ensure user profile exists first (fix for foreign key constraint)
+    console.log('Ensuring user profile exists...')
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        email: user.email || googleUser.email,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'id'
+      })
+
+    if (profileError) {
+      console.error('Failed to ensure profile exists:', profileError)
+    }
+
     // STEP 1: Create/update Google account
     console.log('Step 1: Creating/updating Google account...')
 
