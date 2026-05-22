@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 // Google OAuth scopes needed for GBP management
-// CRITICAL: Need these specific scopes for accessing managed business profiles
+// Using only valid, current scopes for Google Business Profile access
 const GBP_SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
   'https://www.googleapis.com/auth/businessprofileperformance',
-  'https://www.googleapis.com/auth/plus.business.manage', // Legacy scope for managed accounts
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/userinfo.email'
 ].join(' ')
