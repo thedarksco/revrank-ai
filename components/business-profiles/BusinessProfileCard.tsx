@@ -2,27 +2,11 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-
-interface BusinessLocation {
-  id: string
-  location_name: string
-  formatted_address?: string
-  phone?: string
-  website?: string
-  primary_category?: string
-  status?: string
-  verified: boolean
-  total_reviews: number
-  average_rating?: number
-  optimization_score?: number
-  maps_url?: string
-  tags?: string[]
-  ranking_keywords?: any
-}
+import { BusinessLocation, ViewMode } from '@/types/business-profiles'
 
 interface Props {
   location: BusinessLocation
-  viewMode: 'grid' | 'list'
+  viewMode: ViewMode
   onUpdate?: (location: BusinessLocation) => void
 }
 

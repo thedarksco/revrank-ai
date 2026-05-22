@@ -1,11 +1,6 @@
 'use client'
 
-interface GoogleAccount {
-  id: string
-  email: string
-  name: string
-  picture_url?: string
-}
+import { GoogleAccount, SortOption, ViewMode } from '@/types/business-profiles'
 
 interface Props {
   searchQuery: string
@@ -16,10 +11,10 @@ interface Props {
   selectedTags: string[]
   onTagsChange: (tags: string[]) => void
   availableTags: string[]
-  sortBy: 'name' | 'rating' | 'reviews' | 'optimization'
-  onSortChange: (sort: 'name' | 'rating' | 'reviews' | 'optimization') => void
-  viewMode: 'grid' | 'list'
-  onViewModeChange: (mode: 'grid' | 'list') => void
+  sortBy: SortOption
+  onSortChange: (sort: SortOption) => void
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
 }
 
 export default function BusinessProfileFilters({
@@ -85,7 +80,7 @@ export default function BusinessProfileFilters({
         <div className="w-full lg:w-48">
           <select
             value={sortBy}
-            onChange={(e) => onSortChange(e.target.value as 'name' | 'rating' | 'reviews' | 'optimization')}
+            onChange={(e) => onSortChange(e.target.value as SortOption)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           >
             <option value="name">Sort by Name</option>
