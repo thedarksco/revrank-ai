@@ -99,9 +99,11 @@ export default function GoogleAccountManager() {
       setError('An unexpected error occurred. Please try again.')
     }
 
-    if (successParam === 'account_connected') {
+    if (successParam === 'account_connected' || successParam === 'connected') {
       // Refresh accounts list after successful connection
       fetchAccounts()
+      // Automatically fetch business locations after successful connection
+      setTimeout(() => fetchBusinessLocations(), 1500)
     }
 
     if (debugParam === 'true' && debugDataParam) {
