@@ -104,14 +104,31 @@ export async function GET(request: NextRequest) {
 
     // Save locations to database for caching
     if (allLocations.length > 0) {
+      const locationsToSave = allLocations.map(loc => ({
+        user_id: user.id,
+        google_account_id: loc.google_account_id,
+        google_account_email: loc.google_account_email,
+        account_name: loc.account_name,
+        account_number: loc.account_number,
+        location_name: loc.location_name,
+        store_code: loc.store_code,
+        place_id: loc.place_id,
+        address: loc.address,
+        formatted_address: loc.address ?
+          `${loc.address.addressLines?.join(', ') || ''}${loc.address.locality ? `, ${loc.address.locality}` : ''}${loc.address.administrativeArea ? `, ${loc.address.administrativeArea}` : ''}${loc.address.postalCode ? ` ${loc.address.postalCode}` : ''}`.trim() : null,
+        phone: loc.phone,
+        website: loc.website,
+        primary_category: loc.category,
+        maps_url: loc.maps_url,
+        status: loc.status,
+        verified: loc.verified,
+        last_synced: new Date().toISOString()
+      }))
+
       const { error: saveError } = await supabase
         .from('gbp_locations')
         .upsert(
-          allLocations.map(loc => ({
-            ...loc,
-            user_id: user.id,
-            last_synced: new Date().toISOString()
-          })),
+          locationsToSave,
           {
             onConflict: 'place_id',
             ignoreDuplicates: false

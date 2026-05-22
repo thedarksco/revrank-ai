@@ -58,7 +58,26 @@ export default async function DashboardPage() {
         </div>
 
         {/* Dashboard Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Link
+            href="/business-profiles"
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow cursor-pointer"
+          >
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-8 w-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Business Profiles</dt>
+                  <dd className="text-2xl font-semibold text-gray-900">View All</dd>
+                </dl>
+              </div>
+            </div>
+          </Link>
+
           <Link
             href="/clients"
             className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow cursor-pointer"
