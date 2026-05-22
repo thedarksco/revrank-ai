@@ -78,8 +78,16 @@ export async function GET(request: NextRequest) {
 
     // Store or update Google account info
     if (userInfo) {
-      console.log('Attempting to save Google account with userInfo:', userInfo)
-      console.log('Parsed state:', parsedState)
+      console.log('OAuth callback - Google userInfo received:', {
+        id: userInfo.id,
+        email: userInfo.email,
+        name: userInfo.name
+      })
+      console.log('OAuth callback - State:', {
+        userId: parsedState.userId,
+        clientId: parsedState.clientId,
+        debug: parsedState.debug
+      })
 
       // If debug mode, return JSON directly
       if (parsedState.debug) {
@@ -138,13 +146,37 @@ export async function GET(request: NextRequest) {
 
       console.log('Account data to save:', accountData)
 
-      const { data: googleAccount, error: accountError } = await supabase
+      // First, try to insert the account
+      let { data: googleAccount, error: accountError } = await supabase
         .from('google_accounts')
-        .upsert(accountData, {
-          onConflict: 'user_id, google_account_id'
-        })
+        .insert(accountData)
         .select()
         .single()
+
+      // If we get a unique constraint error, try to update instead
+      if (accountError && accountError.code === '23505') {
+        console.log('Account already exists, updating instead')
+        const { data: existingAccount, error: updateError } = await supabase
+          .from('google_accounts')
+          .update({
+            email: accountData.email,
+            name: accountData.name,
+            picture_url: accountData.picture_url,
+            is_active: true,
+            last_connected: new Date().toISOString()
+          })
+          .eq('user_id', parsedState.userId)
+          .eq('google_account_id', accountData.google_account_id)
+          .select()
+          .single()
+
+        if (!updateError) {
+          googleAccount = existingAccount
+          accountError = null
+        } else {
+          accountError = updateError
+        }
+      }
 
       if (accountError) {
         console.error('Failed to save Google account:', accountError)

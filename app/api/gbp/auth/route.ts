@@ -42,10 +42,7 @@ export async function GET(request: NextRequest) {
 
   // Force production URL to always be the same
   // Must match EXACTLY what's in Google Cloud Console
-  // Use debug callback for debug mode
-  const redirectUri = debug
-    ? 'https://revrank-ai.vercel.app/api/gbp/debug-callback'
-    : 'https://revrank-ai.vercel.app/api/gbp/callback'
+  const redirectUri = 'https://revrank-ai.vercel.app/api/gbp/callback'
 
   // Build params manually to ensure exact formatting
   const params = new URLSearchParams({
