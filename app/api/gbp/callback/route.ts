@@ -132,16 +132,19 @@ export async function GET(request: NextRequest) {
       .delete()
       .eq('google_account_id', googleAccount.id)
 
-    // Insert new tokens
+    // Insert new tokens with explicit columns
     const { error: tokenError } = await supabase
       .from('google_tokens')
       .insert({
+        id: crypto.randomUUID(),
         google_account_id: googleAccount.id,
         user_id: user.id,
         access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
+        refresh_token: tokens.refresh_token || tokens.access_token,
         token_expires_at: new Date(Date.now() + (tokens.expires_in * 1000)).toISOString(),
-        scope: tokens.scope ? tokens.scope.split(' ') : []
+        scope: tokens.scope ? tokens.scope.split(' ') : [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
 
     if (tokenError) {
