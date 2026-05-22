@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 // Google OAuth scopes needed for GBP management
 const GBP_SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
-  'https://www.googleapis.com/auth/businesscommunications',
-  'https://www.googleapis.com/auth/plus.business.manage'
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/userinfo.email'
 ].join(' ')
 
 export async function GET(request: NextRequest) {
