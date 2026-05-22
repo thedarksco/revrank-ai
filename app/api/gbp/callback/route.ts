@@ -60,15 +60,17 @@ export async function GET(request: NextRequest) {
     // Save tokens to database
     const supabase = await createClient()
 
-    // Use the userId from state - this is passed from the auth endpoint
-    const userId = parsedState.userId
+    // Get the current authenticated user instead of relying on state
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!userId) {
-      console.error('No userId in OAuth callback state')
-      return NextResponse.redirect(new URL('/dashboard?error=no_user_id', request.url))
+    if (!user) {
+      console.error('No authenticated user found in OAuth callback')
+      return NextResponse.redirect(new URL('/auth?error=not_authenticated', request.url))
     }
 
-    console.log('OAuth callback - Using userId from state:', userId)
+    const userId = user.id
+
+    console.log('OAuth callback - Using current authenticated userId:', userId)
 
     // Ensure user profile exists (fix for foreign key constraint)
     const { data: profile, error: profileError } = await supabase
@@ -80,9 +82,8 @@ export async function GET(request: NextRequest) {
     if (!profile) {
       console.log('Profile not found, creating one for user:', userId)
 
-      // Get user email from auth
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      const userEmail = authUser?.email || parsedState.email || 'user@example.com'
+      // Use the user we already have from earlier
+      const userEmail = user.email || userInfo?.email || 'user@example.com'
 
       // Create the profile
       const { error: createError } = await supabase

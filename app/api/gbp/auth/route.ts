@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
   const state = {
     clientId,
     userId: user.id,
+    userEmail: user.email, // Add user email to state for backup
     accountSelection,
     hostedDomain,
     debug
