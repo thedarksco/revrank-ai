@@ -22,7 +22,7 @@ export async function GET() {
 
   const token = tokens[0].access_token
 
-  const debug = {
+  const debug: any = {
     accounts_found: [],
     locations_found: [],
     errors: []
