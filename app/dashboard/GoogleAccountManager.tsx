@@ -282,6 +282,20 @@ export default function GoogleAccountManager() {
             </button>
             <button
               onClick={async () => {
+                const res = await fetch('/api/gbp/fix-now')
+                const data = await res.json()
+                console.log('FIX NOW Result:', data)
+                alert(`Found ${data.total_locations || 0} locations from ${data.accounts_checked?.length || 0} accounts - Check console for full details`)
+                if (data.total_locations > 0) {
+                  fetchBusinessLocations()
+                }
+              }}
+              className="inline-flex items-center px-3 py-2 border border-red-600 text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+            >
+              🚨 FIX NOW
+            </button>
+            <button
+              onClick={async () => {
                 const res = await fetch('/api/gbp/fetch-all')
                 const data = await res.json()
                 console.log('Fetch All:', data)
