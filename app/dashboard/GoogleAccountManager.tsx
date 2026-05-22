@@ -217,13 +217,16 @@ export default function GoogleAccountManager() {
               Add Account
             </button>
             <button
-              onClick={() => connectNewAccount(true)}
+              onClick={() => {
+                // Use the debug auth endpoint
+                window.open('/api/gbp/auth?debug=true&accountSelection=true', '_blank')
+              }}
               className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Debug Mode
+              Debug JSON
             </button>
           </div>
         </div>

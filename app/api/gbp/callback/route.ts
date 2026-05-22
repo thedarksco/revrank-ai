@@ -81,17 +81,46 @@ export async function GET(request: NextRequest) {
       console.log('Attempting to save Google account with userInfo:', userInfo)
       console.log('Parsed state:', parsedState)
 
-      // If debug mode, redirect with userInfo for inspection
+      // If debug mode, return JSON directly
       if (parsedState.debug) {
-        const debugData = encodeURIComponent(JSON.stringify({
+        // Try to save and include the error in debug output
+        const { data: googleAccount, error: accountError } = await supabase
+          .from('google_accounts')
+          .insert({
+            user_id: parsedState.userId,
+            google_account_id: String(userInfo.id || 'unknown'),
+            email: String(userInfo.email || 'unknown@google.com'),
+            name: String(userInfo.name || userInfo.given_name || userInfo.family_name || 'Google User'),
+            picture_url: userInfo.picture || null,
+            account_type: parsedState.hostedDomain ? 'gsuite' : 'standard',
+            hosted_domain: parsedState.hostedDomain || null,
+            is_active: true,
+            last_connected: new Date().toISOString()
+          })
+          .select()
+          .single()
+
+        return NextResponse.json({
+          debug: true,
           userInfo,
           parsedState,
-          tokens: { ...tokens, access_token: '***', refresh_token: '***' }
-        }))
-        const redirectUrl = parsedState.clientId
-          ? `/clients/${parsedState.clientId}?debug=true&debugData=${debugData}`
-          : `/dashboard?debug=true&debugData=${debugData}`
-        return NextResponse.redirect(new URL(redirectUrl, request.url))
+          tokens: {
+            has_access_token: !!tokens.access_token,
+            has_refresh_token: !!tokens.refresh_token,
+            expires_in: tokens.expires_in,
+            scope: tokens.scope
+          },
+          save_attempt: {
+            success: !accountError,
+            data: googleAccount,
+            error: accountError ? {
+              message: accountError.message,
+              code: accountError.code,
+              details: accountError.details,
+              hint: accountError.hint
+            } : null
+          }
+        })
       }
 
       // Ensure all required fields have safe defaults
