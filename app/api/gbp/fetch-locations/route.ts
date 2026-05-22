@@ -30,52 +30,151 @@ export async function GET(request: NextRequest) {
 
     // For each Google account, fetch the business locations
     for (const account of googleAccounts) {
-      const token = account.google_tokens?.[0]
+      const tokenData = account.google_tokens?.[0]
 
-      if (!token?.access_token) {
+      if (!tokenData?.access_token) {
         console.log(`No valid token for account ${account.email}`)
         continue
       }
 
+      // Check if token needs refresh
+      const now = new Date()
+      const expiresAt = new Date(tokenData.token_expires_at || 0)
+      let accessToken = tokenData.access_token
+
+      if (expiresAt <= now && tokenData.refresh_token) {
+        // Refresh the token
+        try {
+          console.log(`Refreshing expired token for ${account.email}`)
+          const refreshResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.GOOGLE_CLIENT_ID!,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+              refresh_token: tokenData.refresh_token,
+              grant_type: 'refresh_token'
+            })
+          })
+
+          if (refreshResponse.ok) {
+            const refreshData = await refreshResponse.json()
+            accessToken = refreshData.access_token
+
+            // Update token in database
+            await supabase
+              .from('google_tokens')
+              .update({
+                access_token: refreshData.access_token,
+                token_expires_at: new Date(Date.now() + (refreshData.expires_in * 1000)).toISOString()
+              })
+              .eq('google_account_id', account.id)
+
+            console.log(`Token refreshed successfully for ${account.email}`)
+          } else {
+            console.error(`Failed to refresh token for ${account.email}:`, await refreshResponse.text())
+            continue
+          }
+        } catch (refreshError) {
+          console.error(`Error refreshing token for ${account.email}:`, refreshError)
+          continue
+        }
+      }
+
       try {
-        // First, get the account list (organizations)
+        // CRITICAL FIX: Use both new and legacy APIs to find managed accounts
+        console.log(`Fetching accounts for ${account.email}`)
+
+        // Try the new Account Management API first
         const accountsResponse = await fetch(
           'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
           {
             headers: {
-              'Authorization': `Bearer ${token.access_token}`,
+              'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
             }
           }
         )
 
-        if (!accountsResponse.ok) {
-          console.error('Failed to fetch accounts:', await accountsResponse.text())
-          continue
+        // Also try the legacy My Business API for managed accounts
+        const legacyAccountsResponse = await fetch(
+          'https://mybusiness.googleapis.com/v4/accounts',
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+
+        let allAccounts = []
+
+        // Process new API response
+        if (accountsResponse.ok) {
+          const accountsData = await accountsResponse.json()
+          allAccounts = [...(accountsData.accounts || [])]
+          console.log(`New API found ${allAccounts.length} accounts`)
+        } else {
+          const errorText = await accountsResponse.text()
+          console.error(`New API failed for ${account.email}:`, {
+            status: accountsResponse.status,
+            error: errorText
+          })
         }
 
-        const accountsData = await accountsResponse.json()
-        const accounts = accountsData.accounts || []
+        // Process legacy API response for managed accounts
+        if (legacyAccountsResponse.ok) {
+          const legacyAccountsData = await legacyAccountsResponse.json()
+          const legacyAccounts = legacyAccountsData.accounts || []
+          console.log(`Legacy API found ${legacyAccounts.length} accounts`)
+
+          // Add legacy accounts that aren't already in the new API response
+          for (const legacyAccount of legacyAccounts) {
+            const exists = allAccounts.find(acc =>
+              acc.accountNumber === legacyAccount.accountNumber ||
+              acc.name === legacyAccount.name
+            )
+            if (!exists) {
+              allAccounts.push(legacyAccount)
+            }
+          }
+        } else {
+          const legacyErrorText = await legacyAccountsResponse.text()
+          console.error(`Legacy API failed for ${account.email}:`, {
+            status: legacyAccountsResponse.status,
+            error: legacyErrorText
+          })
+        }
+
+        console.log(`Total accounts found for ${account.email}: ${allAccounts.length}`)
 
         // For each account, get the locations
-        for (const gbpAccount of accounts) {
+        for (const gbpAccount of allAccounts) {
+          console.log(`Fetching locations for account: ${gbpAccount.accountName || gbpAccount.name}`)
           const locationsResponse = await fetch(
             `https://mybusinessbusinessinformation.googleapis.com/v1/${gbpAccount.name}/locations`,
             {
               headers: {
-                'Authorization': `Bearer ${token.access_token}`,
+                'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
               }
             }
           )
 
           if (!locationsResponse.ok) {
-            console.error('Failed to fetch locations:', await locationsResponse.text())
+            const errorText = await locationsResponse.text()
+            console.error(`Failed to fetch locations for account ${gbpAccount.accountName || gbpAccount.name}:`, {
+              status: locationsResponse.status,
+              statusText: locationsResponse.statusText,
+              error: errorText
+            })
             continue
           }
 
           const locationsData = await locationsResponse.json()
           const locations = locationsData.locations || []
+
+          console.log(`Found ${locations.length} locations for account ${gbpAccount.accountName || gbpAccount.name}`)
 
           // Add locations with account info
           for (const location of locations) {
@@ -130,7 +229,7 @@ export async function GET(request: NextRequest) {
         .upsert(
           locationsToSave,
           {
-            onConflict: 'place_id',
+            onConflict: 'user_id,place_id',
             ignoreDuplicates: false
           }
         )
@@ -140,11 +239,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    console.log('=== FETCH LOCATIONS SUMMARY ===')
+    console.log(`Accounts checked: ${googleAccounts.length}`)
+    console.log(`Total locations found: ${allLocations.length}`)
+    console.log(`Locations saved: ${allLocations.length}`)
+
     return NextResponse.json({
       success: true,
       locations: allLocations,
       count: allLocations.length,
-      accounts_checked: googleAccounts.length
+      accounts_checked: googleAccounts.length,
+      debug: {
+        accounts_with_tokens: googleAccounts.filter(acc => acc.google_tokens?.[0]?.access_token).length,
+        locations_by_account: googleAccounts.map(acc => ({
+          email: acc.email,
+          has_token: !!acc.google_tokens?.[0]?.access_token,
+          token_expires: acc.google_tokens?.[0]?.token_expires_at
+        }))
+      }
     })
 
   } catch (error: any) {
