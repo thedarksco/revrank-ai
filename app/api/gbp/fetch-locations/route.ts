@@ -4,8 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-
-    // Get the current user
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -28,246 +26,221 @@ export async function GET(request: NextRequest) {
 
     const allLocations = []
 
-    // For each Google account, fetch the business locations
     for (const account of googleAccounts) {
       const tokenData = account.google_tokens?.[0]
+      if (!tokenData?.access_token) continue
 
-      if (!tokenData?.access_token) {
-        console.log(`No valid token for account ${account.email}`)
-        continue
-      }
+      const token = tokenData.access_token
 
-      // Check if token needs refresh
-      const now = new Date()
-      const expiresAt = new Date(tokenData.token_expires_at || 0)
-      let accessToken = tokenData.access_token
+      // CRITICAL FIX: For MANAGER accounts like hello@revrank.ai,
+      // we need to use the locations:batchGet endpoint with SPECIFIC location names
+      // The API won't return managed locations through the accounts endpoint
 
-      if (expiresAt <= now && tokenData.refresh_token) {
-        // Refresh the token
-        try {
-          console.log(`Refreshing expired token for ${account.email}`)
-          const refreshResponse = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              client_id: process.env.GOOGLE_CLIENT_ID!,
-              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-              refresh_token: tokenData.refresh_token,
-              grant_type: 'refresh_token'
-            })
-          })
-
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json()
-            accessToken = refreshData.access_token
-
-            // Update token in database
-            await supabase
-              .from('google_tokens')
-              .update({
-                access_token: refreshData.access_token,
-                token_expires_at: new Date(Date.now() + (refreshData.expires_in * 1000)).toISOString()
-              })
-              .eq('google_account_id', account.id)
-
-            console.log(`Token refreshed successfully for ${account.email}`)
-          } else {
-            console.error(`Failed to refresh token for ${account.email}:`, await refreshResponse.text())
-            continue
-          }
-        } catch (refreshError) {
-          console.error(`Error refreshing token for ${account.email}:`, refreshError)
-          continue
+      // Step 1: Try to get locations this account has been granted access to
+      // This is done through the My Business Account Management API
+      const accessRes = await fetch(
+        'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
+        {
+          headers: { 'Authorization': `Bearer ${token}` }
         }
-      }
+      )
 
-      try {
-        // CRITICAL FIX: Use both new and legacy APIs to find managed accounts
-        console.log(`Fetching accounts for ${account.email}`)
+      if (accessRes.ok) {
+        const accessData = await accessRes.json()
 
-        // Try the new Account Management API first
-        const accountsResponse = await fetch(
-          'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            }
+        // These are accounts we can see, but we need to find the ACTUAL owner accounts
+        // that have granted us access to their locations
+
+        // Step 2: Use the locations search to find ALL accessible locations
+        // This includes locations we manage but don't own
+        const searchBody = {
+          pageSize: 100,
+          filter: {
+            // Search for all locations accessible to this user
+            // Don't filter by account - get ALL accessible locations
           }
-        )
+        }
 
-        // Get managed accounts using the correct endpoint
-        const managedAccountsResponse = await fetch(
-          'https://mybusinessaccountmanagement.googleapis.com/v1/locations:search',
+        // Try the batch get approach - this often returns managed locations
+        const batchRes = await fetch(
+          'https://mybusinessbusinessinformation.googleapis.com/v1/googleLocations:search',
           {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${accessToken}`,
+              'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              pageSize: 100
+              pageSize: 100,
+              query: {
+                // Empty query to get all accessible locations
+              }
             })
           }
         )
 
-        let allAccounts: any[] = []
-
-        // Process new API response
-        if (accountsResponse.ok) {
-          const accountsData = await accountsResponse.json()
-          allAccounts = [...(accountsData.accounts || [])]
-          console.log(`New API found ${allAccounts.length} accounts`)
-        } else {
-          const errorText = await accountsResponse.text()
-          console.error(`New API failed for ${account.email}:`, {
-            status: accountsResponse.status,
-            error: errorText
-          })
-        }
-
-        // Process managed locations directly
-        if (managedAccountsResponse.ok) {
-          const managedData = await managedAccountsResponse.json()
-          const locations = managedData.locations || []
-          console.log(`Found ${locations.length} managed locations for ${account.email}`)
-
-          // Convert locations directly to our format
-          for (const location of locations) {
-            allLocations.push({
-              google_account_id: account.id,
-              google_account_email: account.email,
-              account_name: location.name,
-              location_name: location.locationName,
-              place_id: location.metadata?.placeId,
-              address: location.address,
-              phone: location.phoneNumbers?.primaryPhone,
-              website: location.websiteUrl,
-              category: location.primaryCategory?.displayName,
-              maps_url: location.metadata?.mapsUrl,
-              verified: location.verificationState === 'VERIFIED',
-              status: location.locationState?.isVerified ? 'VERIFIED' : 'UNVERIFIED'
-            })
+        if (batchRes.ok) {
+          const batchData = await batchRes.json()
+          if (batchData.googleLocations) {
+            for (const loc of batchData.googleLocations) {
+              allLocations.push({
+                google_account_email: account.email,
+                google_account_id: account.id,
+                location_name: loc.title || loc.name,
+                address: loc.storefrontAddress,
+                phone: loc.primaryPhone,
+                category: loc.primaryCategoryId,
+                website: loc.websiteUrl,
+                place_id: loc.name,
+                verified: true
+              })
+            }
           }
-        } else {
-          const errorText = await managedAccountsResponse.text()
-          console.error(`Managed locations API failed for ${account.email}:`, {
-            status: managedAccountsResponse.status,
-            error: errorText
-          })
         }
 
-        console.log(`Total accounts found for ${account.email}: ${allAccounts.length}`)
+        // Step 3: For each account in accessData, try to get locations
+        // INCLUDING accounts where we're listed as a locationGroupUser
+        if (accessData.accounts) {
+          for (const acc of accessData.accounts) {
+            // Check if this account has locationGroups that we manage
+            const groupsRes = await fetch(
+              `https://mybusinessaccountmanagement.googleapis.com/v1/${acc.name}/locations`,
+              {
+                headers: { 'Authorization': `Bearer ${token}` }
+              }
+            )
 
-        // For each account, get the locations
-        for (const gbpAccount of allAccounts) {
-          console.log(`Fetching locations for account: ${gbpAccount.accountName || gbpAccount.name}`)
-          const locationsResponse = await fetch(
-            `https://mybusinessbusinessinformation.googleapis.com/v1/${gbpAccount.name}/locations`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
+            if (groupsRes.ok) {
+              const groupsData = await groupsRes.json()
+              if (groupsData.locations) {
+                for (const loc of groupsData.locations) {
+                  allLocations.push({
+                    google_account_email: account.email,
+                    google_account_id: account.id,
+                    account_name: acc.name,
+                    location_name: loc.name,
+                    verified: true
+                  })
+                }
               }
             }
-          )
 
-          if (!locationsResponse.ok) {
-            const errorText = await locationsResponse.text()
-            console.error(`Failed to fetch locations for account ${gbpAccount.accountName || gbpAccount.name}:`, {
-              status: locationsResponse.status,
-              statusText: locationsResponse.statusText,
-              error: errorText
-            })
-            continue
-          }
+            // Also try the Business Information API
+            const infoRes = await fetch(
+              `https://mybusinessbusinessinformation.googleapis.com/v1/${acc.name}/locations?pageSize=100`,
+              {
+                headers: { 'Authorization': `Bearer ${token}` }
+              }
+            )
 
-          const locationsData = await locationsResponse.json()
-          const locations = locationsData.locations || []
-
-          console.log(`Found ${locations.length} locations for account ${gbpAccount.accountName || gbpAccount.name}`)
-
-          // Add locations with account info
-          for (const location of locations) {
-            allLocations.push({
-              google_account_email: account.email,
-              google_account_id: account.id,
-              account_name: gbpAccount.accountName,
-              account_number: gbpAccount.accountNumber,
-              location_name: location.title || location.name,
-              store_code: location.storeCode,
-              address: location.address,
-              phone: location.phoneNumbers?.primary,
-              category: location.categories?.primary,
-              website: location.websiteUri,
-              place_id: location.metadata?.placeId,
-              maps_url: location.metadata?.mapsUri,
-              status: location.openInfo?.status,
-              verified: location.verificationState === 'VERIFIED'
-            })
+            if (infoRes.ok) {
+              const infoData = await infoRes.json()
+              if (infoData.locations) {
+                for (const loc of infoData.locations) {
+                  allLocations.push({
+                    google_account_email: account.email,
+                    google_account_id: account.id,
+                    account_name: acc.name,
+                    location_name: loc.title || loc.name,
+                    address: loc.storefrontAddress,
+                    phone: loc.phoneNumbers?.primaryPhone,
+                    category: loc.primaryCategory?.displayName,
+                    website: loc.websiteUri,
+                    place_id: loc.name?.split('/').pop(),
+                    verified: loc.verificationState === 'VERIFIED'
+                  })
+                }
+              }
+            }
           }
         }
-      } catch (error) {
-        console.error(`Error fetching locations for ${account.email}:`, error)
+      }
+
+      // Step 4: MOST IMPORTANT - Try the accounts/-/locations endpoint
+      // This gets ALL locations across ALL accounts the user can access
+      const allAccountsRes = await fetch(
+        'https://mybusiness.googleapis.com/v4/accounts',
+        {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      )
+
+      if (allAccountsRes.ok) {
+        const allAccountsData = await allAccountsRes.json()
+        if (allAccountsData.accounts) {
+          for (const acc of allAccountsData.accounts) {
+            const v4LocRes = await fetch(
+              `https://mybusiness.googleapis.com/v4/${acc.name}/locations`,
+              {
+                headers: { 'Authorization': `Bearer ${token}` }
+              }
+            )
+
+            if (v4LocRes.ok) {
+              const v4LocData = await v4LocRes.json()
+              if (v4LocData.locations) {
+                for (const loc of v4LocData.locations) {
+                  if (!allLocations.find(l => l.place_id === loc.name)) {
+                    allLocations.push({
+                      google_account_email: account.email,
+                      google_account_id: account.id,
+                      account_name: acc.name,
+                      location_name: loc.locationName,
+                      address: loc.address,
+                      phone: loc.primaryPhone,
+                      category: loc.primaryCategory?.categoryId,
+                      website: loc.websiteUrl,
+                      place_id: loc.name,
+                      verified: loc.locationState?.isVerified
+                    })
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
 
-    // Save locations to database for caching
-    if (allLocations.length > 0) {
-      const locationsToSave = allLocations.map(loc => ({
-        user_id: user.id,
-        google_account_id: loc.google_account_id,
-        google_account_email: loc.google_account_email,
-        account_name: loc.account_name,
-        account_number: loc.account_number,
-        location_name: loc.location_name,
-        store_code: loc.store_code,
-        place_id: loc.place_id,
-        address: loc.address,
-        formatted_address: loc.address ?
-          `${loc.address.addressLines?.join(', ') || ''}${loc.address.locality ? `, ${loc.address.locality}` : ''}${loc.address.administrativeArea ? `, ${loc.address.administrativeArea}` : ''}${loc.address.postalCode ? ` ${loc.address.postalCode}` : ''}`.trim() : null,
-        phone: loc.phone,
-        website: loc.website,
-        primary_category: loc.category,
-        maps_url: loc.maps_url,
-        status: loc.status,
-        verified: loc.verified,
-        last_synced: new Date().toISOString()
-      }))
+    // Remove duplicates based on place_id
+    const uniqueLocations = allLocations.reduce((acc, loc) => {
+      if (!acc.find(l => l.place_id === loc.place_id)) {
+        acc.push(loc)
+      }
+      return acc
+    }, [] as any[])
 
-      const { error: saveError } = await supabase
-        .from('gbp_locations')
-        .upsert(
-          locationsToSave,
-          {
+    // Save to database
+    if (uniqueLocations.length > 0) {
+      for (const loc of uniqueLocations) {
+        await supabase
+          .from('gbp_locations')
+          .upsert({
+            user_id: user.id,
+            google_account_id: loc.google_account_id,
+            google_account_email: loc.google_account_email,
+            account_name: loc.account_name,
+            location_name: loc.location_name,
+            place_id: loc.place_id,
+            formatted_address: typeof loc.address === 'object' ?
+              `${loc.address.addressLines?.join(', ') || ''}${loc.address.locality ? `, ${loc.address.locality}` : ''}${loc.address.administrativeArea ? `, ${loc.address.administrativeArea}` : ''}`.trim() :
+              loc.address,
+            phone: loc.phone,
+            website: loc.website,
+            primary_category: loc.category,
+            verified: loc.verified,
+            last_synced: new Date().toISOString()
+          }, {
             onConflict: 'user_id,place_id',
             ignoreDuplicates: false
-          }
-        )
-
-      if (saveError) {
-        console.error('Error saving locations:', saveError)
+          })
       }
     }
-
-    console.log('=== FETCH LOCATIONS SUMMARY ===')
-    console.log(`Accounts checked: ${googleAccounts.length}`)
-    console.log(`Total locations found: ${allLocations.length}`)
-    console.log(`Locations saved: ${allLocations.length}`)
 
     return NextResponse.json({
       success: true,
-      locations: allLocations,
-      count: allLocations.length,
-      accounts_checked: googleAccounts.length,
-      debug: {
-        accounts_with_tokens: googleAccounts.filter(acc => acc.google_tokens?.[0]?.access_token).length,
-        locations_by_account: googleAccounts.map(acc => ({
-          email: acc.email,
-          has_token: !!acc.google_tokens?.[0]?.access_token,
-          token_expires: acc.google_tokens?.[0]?.token_expires_at
-        }))
-      }
+      locations: uniqueLocations,
+      count: uniqueLocations.length
     })
 
   } catch (error: any) {

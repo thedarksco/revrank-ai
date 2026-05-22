@@ -150,23 +150,15 @@ export default function GoogleAccountManager() {
     setLoadingLocations(true)
     setBusinessLocations([])
     try {
-      // Use working solution that tries all API methods
-      const response = await fetch('/api/gbp/working-solution')
+      const response = await fetch('/api/gbp/fetch-locations')
       if (response.ok) {
         const data = await response.json()
-        console.log('Working solution response:', data)
         if (data.locations && data.locations.length > 0) {
           setBusinessLocations(data.locations)
-        } else {
-          setError(`No locations found. Checked ${data.accounts_checked} accounts.`)
         }
-      } else {
-        const errorData = await response.json()
-        setError(`Failed: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error:', error)
-      setError('Failed to fetch locations.')
     } finally {
       setLoadingLocations(false)
     }
