@@ -150,7 +150,7 @@ export default function GoogleAccountManager() {
     setLoadingLocations(true)
     setBusinessLocations([])
     try {
-      const response = await fetch('/api/gbp/fetch-locations')
+      const response = await fetch('/api/gbp/simple')
       if (response.ok) {
         const data = await response.json()
         if (data.locations && data.locations.length > 0) {
