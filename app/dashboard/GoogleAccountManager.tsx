@@ -257,6 +257,39 @@ export default function GoogleAccountManager() {
           <h3 className="text-lg font-medium text-gray-900">Google Accounts</h3>
           <div className="space-x-2">
             <button
+              onClick={async () => {
+                const res = await fetch('/api/gbp/diagnostic')
+                const data = await res.json()
+                console.log('Diagnostic:', data)
+                alert(`Check console for diagnostic data. Accounts: ${data.database?.google_accounts?.count || 0}, Tokens: ${data.database?.google_tokens?.count || 0}`)
+              }}
+              className="inline-flex items-center px-3 py-2 border border-purple-300 text-sm leading-4 font-medium rounded-md text-purple-700 bg-white hover:bg-purple-50"
+            >
+              🔍 Diagnostic
+            </button>
+            <button
+              onClick={async () => {
+                const res = await fetch('/api/gbp/test-token')
+                const data = await res.json()
+                console.log('Token Test:', data)
+                alert(`Token test: ${data.gmb_test?.ok ? 'SUCCESS' : 'FAILED'} - Check console`)
+              }}
+              className="inline-flex items-center px-3 py-2 border border-blue-300 text-sm leading-4 font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50"
+            >
+              🔑 Test Token
+            </button>
+            <button
+              onClick={async () => {
+                const res = await fetch('/api/gbp/fetch-all')
+                const data = await res.json()
+                console.log('Fetch All:', data)
+                alert(`Fetched from ${data.accounts_checked || 0} accounts - Check console`)
+              }}
+              className="inline-flex items-center px-3 py-2 border border-green-300 text-sm leading-4 font-medium rounded-md text-green-700 bg-white hover:bg-green-50"
+            >
+              📍 Fetch All
+            </button>
+            <button
               onClick={fetchBusinessLocations}
               disabled={loadingLocations}
               className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
