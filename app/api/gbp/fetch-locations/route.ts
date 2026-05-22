@@ -96,14 +96,18 @@ export async function GET(request: NextRequest) {
           }
         )
 
-        // Also try the legacy My Business API for managed accounts
-        const legacyAccountsResponse = await fetch(
-          'https://mybusiness.googleapis.com/v4/accounts',
+        // Get managed accounts using the correct endpoint
+        const managedAccountsResponse = await fetch(
+          'https://mybusinessaccountmanagement.googleapis.com/v1/locations:search',
           {
+            method: 'POST',
             headers: {
               'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({
+              pageSize: 100
+            })
           }
         )
 
@@ -122,27 +126,34 @@ export async function GET(request: NextRequest) {
           })
         }
 
-        // Process legacy API response for managed accounts
-        if (legacyAccountsResponse.ok) {
-          const legacyAccountsData = await legacyAccountsResponse.json()
-          const legacyAccounts = legacyAccountsData.accounts || []
-          console.log(`Legacy API found ${legacyAccounts.length} accounts`)
+        // Process managed locations directly
+        if (managedAccountsResponse.ok) {
+          const managedData = await managedAccountsResponse.json()
+          const locations = managedData.locations || []
+          console.log(`Found ${locations.length} managed locations for ${account.email}`)
 
-          // Add legacy accounts that aren't already in the new API response
-          for (const legacyAccount of legacyAccounts) {
-            const exists = allAccounts.find(acc =>
-              acc.accountNumber === legacyAccount.accountNumber ||
-              acc.name === legacyAccount.name
-            )
-            if (!exists) {
-              allAccounts.push(legacyAccount)
-            }
+          // Convert locations directly to our format
+          for (const location of locations) {
+            allLocations.push({
+              google_account_id: account.id,
+              google_account_email: account.email,
+              account_name: location.name,
+              location_name: location.locationName,
+              place_id: location.metadata?.placeId,
+              address: location.address,
+              phone: location.phoneNumbers?.primaryPhone,
+              website: location.websiteUrl,
+              category: location.primaryCategory?.displayName,
+              maps_url: location.metadata?.mapsUrl,
+              verified: location.verificationState === 'VERIFIED',
+              status: location.locationState?.isVerified ? 'VERIFIED' : 'UNVERIFIED'
+            })
           }
         } else {
-          const legacyErrorText = await legacyAccountsResponse.text()
-          console.error(`Legacy API failed for ${account.email}:`, {
-            status: legacyAccountsResponse.status,
-            error: legacyErrorText
+          const errorText = await managedAccountsResponse.text()
+          console.error(`Managed locations API failed for ${account.email}:`, {
+            status: managedAccountsResponse.status,
+            error: errorText
           })
         }
 
