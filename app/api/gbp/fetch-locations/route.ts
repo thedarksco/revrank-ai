@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
           }
         )
 
-        let allAccounts = []
+        let allAccounts: any[] = []
 
         // Process new API response
         if (accountsResponse.ok) {
