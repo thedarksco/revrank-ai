@@ -30,17 +30,38 @@ interface ManagerRelationship {
   last_synced: string
 }
 
+interface BusinessLocation {
+  google_account_email: string
+  google_account_id: string
+  account_name: string
+  account_number: string
+  location_name: string
+  store_code?: string
+  address: any
+  phone?: string
+  category?: string
+  website?: string
+  place_id?: string
+  maps_url?: string
+  status?: string
+  verified: boolean
+}
+
 export default function GoogleAccountManager() {
   const [accounts, setAccounts] = useState<GoogleAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState<GoogleAccount | null>(null)
   const [managerRelationships, setManagerRelationships] = useState<ManagerRelationship[]>([])
+  const [businessLocations, setBusinessLocations] = useState<BusinessLocation[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [loadingLocations, setLoadingLocations] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const searchParams = useSearchParams()
 
   useEffect(() => {
     fetchAccounts()
+    // Automatically fetch business locations on component mount
+    fetchBusinessLocations()
 
     // Check for error messages from redirect
     const errorParam = searchParams.get('error')
@@ -123,11 +144,37 @@ export default function GoogleAccountManager() {
     }
   }
 
+  const fetchBusinessLocations = async () => {
+    setLoadingLocations(true)
+    setBusinessLocations([])
+    try {
+      const response = await fetch('/api/gbp/fetch-locations')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.locations && data.locations.length > 0) {
+          setBusinessLocations(data.locations)
+        } else if (data.error) {
+          setError(`Failed to fetch locations: ${data.error}`)
+        }
+      } else {
+        const errorData = await response.json()
+        setError(`Failed to fetch locations: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error fetching business locations:', error)
+      setError('Failed to fetch business locations. Please try again.')
+    } finally {
+      setLoadingLocations(false)
+    }
+  }
+
   const handleAccountSelect = async (account: GoogleAccount) => {
     setSelectedAccount(account)
     if (account.is_manager) {
       await fetchManagerRelationships(account.id)
     }
+    // Always fetch business locations when an account is selected
+    await fetchBusinessLocations()
   }
 
   const connectNewAccount = (debug = false) => {
@@ -208,6 +255,16 @@ export default function GoogleAccountManager() {
           <h3 className="text-lg font-medium text-gray-900">Google Accounts</h3>
           <div className="space-x-2">
             <button
+              onClick={fetchBusinessLocations}
+              disabled={loadingLocations}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {loadingLocations ? 'Loading...' : 'Refresh Locations'}
+            </button>
+            <button
               onClick={() => connectNewAccount(false)}
               className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
@@ -237,6 +294,75 @@ export default function GoogleAccountManager() {
           </div>
         </div>
       </div>
+
+      {/* Business Locations Section */}
+      {businessLocations.length > 0 && (
+        <div className="px-6 pb-4">
+          <h4 className="text-sm font-medium text-gray-900 mb-3">Google Business Profiles</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {businessLocations.map((location, idx) => (
+              <div key={idx} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-2">
+                  <h5 className="font-medium text-gray-900 text-sm">
+                    {location.location_name}
+                  </h5>
+                  {location.verified && (
+                    <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+
+                {location.address && (
+                  <p className="text-xs text-gray-600 mb-1">
+                    {location.address.addressLines?.join(', ')}
+                    {location.address.locality && `, ${location.address.locality}`}
+                    {location.address.administrativeArea && `, ${location.address.administrativeArea}`}
+                    {location.address.postalCode && ` ${location.address.postalCode}`}
+                  </p>
+                )}
+
+                {location.phone && (
+                  <p className="text-xs text-gray-600 mb-1">📞 {location.phone}</p>
+                )}
+
+                {location.category && (
+                  <p className="text-xs text-gray-500 mb-2">{location.category}</p>
+                )}
+
+                <div className="flex items-center justify-between mt-2 pt-2 border-t">
+                  <span className="text-xs text-gray-500">
+                    via {location.google_account_email}
+                  </span>
+                  {location.maps_url && (
+                    <a
+                      href={location.maps_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      View on Maps →
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Loading Business Locations */}
+      {loadingLocations && (
+        <div className="px-6 pb-4">
+          <div className="flex items-center justify-center py-8">
+            <svg className="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="ml-3 text-gray-600">Loading Google Business Profiles...</span>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
         {/* Accounts List */}
