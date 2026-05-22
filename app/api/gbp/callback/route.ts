@@ -305,18 +305,31 @@ export async function GET(request: NextRequest) {
     }
 
     // Store or update Google tokens
+    console.log('Saving tokens for google_account_id:', googleAccountId)
+
+    if (!googleAccountId) {
+      console.error('No googleAccountId available for token save')
+      const redirectUrl = parsedState.clientId ? `/clients/${parsedState.clientId}?error=no_account_id` : '/dashboard?error=no_account_id'
+      return NextResponse.redirect(new URL(redirectUrl, request.url))
+    }
+
+    // Try to delete existing tokens first, then insert new ones
+    await supabase
+      .from('google_tokens')
+      .delete()
+      .eq('google_account_id', googleAccountId)
+
     const { error: tokenError } = await supabase
       .from('google_tokens')
-      .upsert({
+      .insert({
         google_account_id: googleAccountId,
         user_id: userId,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
         scope: tokens.scope ? tokens.scope.split(' ') : [],
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'google_account_id'
       })
 
     if (tokenError) {
