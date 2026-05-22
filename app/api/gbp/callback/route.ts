@@ -70,6 +70,36 @@ export async function GET(request: NextRequest) {
 
     console.log('OAuth callback - Using userId from state:', userId)
 
+    // Ensure user profile exists (fix for foreign key constraint)
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .single()
+
+    if (!profile) {
+      console.log('Profile not found, creating one for user:', userId)
+
+      // Get user email from auth
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      const userEmail = authUser?.email || parsedState.email || 'user@example.com'
+
+      // Create the profile
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          email: userEmail,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+      if (createError && !createError.message?.includes('duplicate')) {
+        console.error('Failed to create profile:', createError)
+        return NextResponse.redirect(new URL('/dashboard?error=profile_creation_failed', request.url))
+      }
+    }
+
     // If parsedState.clientId is provided, verify user owns this client
     if (parsedState.clientId) {
       const { data: client } = await supabase
