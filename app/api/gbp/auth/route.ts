@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server'
 // Using only valid, current scopes for Google Business Profile access
 const GBP_SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
-  'https://www.googleapis.com/auth/businessprofileperformance',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/userinfo.email'
 ].join(' ')
