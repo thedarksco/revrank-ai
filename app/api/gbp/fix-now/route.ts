@@ -144,7 +144,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       total_locations: debug.locations_found.length,
-      accounts_checked: debug.accounts_found.map(a => ({
+      accounts_checked: debug.accounts_found.map((a: any) => ({
         name: a.name,
         type: a.type,
         accountName: a.accountName,
