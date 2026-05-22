@@ -60,13 +60,25 @@ export async function GET(request: NextRequest) {
     // Save tokens to database
     const supabase = await createClient()
 
+    // Get the current authenticated user instead of relying on state
+    const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+
+    if (!currentUser || authError) {
+      console.error('No authenticated user in OAuth callback:', authError)
+      return NextResponse.redirect(new URL('/auth?error=not_authenticated', request.url))
+    }
+
+    // Use the current authenticated user's ID instead of parsedState.userId
+    const userId = currentUser.id
+    console.log('OAuth callback - Using authenticated user ID:', userId)
+
     // If parsedState.clientId is provided, verify user owns this client
     if (parsedState.clientId) {
       const { data: client } = await supabase
         .from('clients')
         .select('id')
         .eq('id', parsedState.clientId)
-        .eq('user_id', parsedState.userId)
+        .eq('user_id', userId)
         .single()
 
       if (!client) {
@@ -84,7 +96,7 @@ export async function GET(request: NextRequest) {
         name: userInfo.name
       })
       console.log('OAuth callback - State:', {
-        userId: parsedState.userId,
+        userId: userId,
         clientId: parsedState.clientId,
         debug: parsedState.debug
       })
@@ -95,7 +107,7 @@ export async function GET(request: NextRequest) {
         const { data: googleAccount, error: accountError } = await supabase
           .from('google_accounts')
           .insert({
-            user_id: parsedState.userId,
+            user_id: userId,
             google_account_id: String(userInfo.id || 'unknown'),
             email: String(userInfo.email || 'unknown@google.com'),
             name: String(userInfo.name || userInfo.given_name || userInfo.family_name || 'Google User'),
@@ -133,7 +145,7 @@ export async function GET(request: NextRequest) {
 
       // Ensure all required fields have safe defaults
       const accountData = {
-        user_id: parsedState.userId,
+        user_id: userId,
         google_account_id: String(userInfo.id || 'unknown'),
         email: String(userInfo.email || 'unknown@google.com'),
         name: String(userInfo.name || userInfo.given_name || userInfo.family_name || 'Google User'),
@@ -165,7 +177,7 @@ export async function GET(request: NextRequest) {
             is_active: true,
             last_connected: new Date().toISOString()
           })
-          .eq('user_id', parsedState.userId)
+          .eq('user_id', userId)
           .eq('google_account_id', accountData.google_account_id)
           .select()
           .single()
@@ -185,7 +197,7 @@ export async function GET(request: NextRequest) {
           message: accountError.message,
           details: accountError.details,
           hint: accountError.hint,
-          userId: parsedState.userId,
+          userId: userId,
           googleAccountId: userInfo.id,
           userInfo: userInfo
         })
@@ -210,7 +222,7 @@ export async function GET(request: NextRequest) {
           const { data: existingAccount } = await supabase
             .from('google_accounts')
             .select('id')
-            .eq('user_id', parsedState.userId)
+            .eq('user_id', userId)
             .eq('google_account_id', userInfo.id)
             .single()
 
@@ -250,7 +262,7 @@ export async function GET(request: NextRequest) {
       .from('google_tokens')
       .upsert({
         google_account_id: googleAccountId,
-        user_id: parsedState.userId,
+        user_id: userId,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
