@@ -60,17 +60,15 @@ export async function GET(request: NextRequest) {
     // Save tokens to database
     const supabase = await createClient()
 
-    // Get the current authenticated user instead of relying on state
-    const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+    // Use the userId from state - this is passed from the auth endpoint
+    const userId = parsedState.userId
 
-    if (!currentUser || authError) {
-      console.error('No authenticated user in OAuth callback:', authError)
-      return NextResponse.redirect(new URL('/auth?error=not_authenticated', request.url))
+    if (!userId) {
+      console.error('No userId in OAuth callback state')
+      return NextResponse.redirect(new URL('/dashboard?error=no_user_id', request.url))
     }
 
-    // Use the current authenticated user's ID instead of parsedState.userId
-    const userId = currentUser.id
-    console.log('OAuth callback - Using authenticated user ID:', userId)
+    console.log('OAuth callback - Using userId from state:', userId)
 
     // If parsedState.clientId is provided, verify user owns this client
     if (parsedState.clientId) {
@@ -158,12 +156,30 @@ export async function GET(request: NextRequest) {
 
       console.log('Account data to save:', accountData)
 
+      // Check if account already exists
+      const { data: existingCheck } = await supabase
+        .from('google_accounts')
+        .select('id, email, google_account_id')
+        .eq('user_id', userId)
+        .eq('google_account_id', accountData.google_account_id)
+        .single()
+
+      if (existingCheck) {
+        console.log('Account already exists, updating:', existingCheck)
+      }
+
       // First, try to insert the account
       let { data: googleAccount, error: accountError } = await supabase
         .from('google_accounts')
         .insert(accountData)
         .select()
         .single()
+
+      console.log('Insert attempt result:', {
+        success: !accountError,
+        data: googleAccount,
+        error: accountError
+      })
 
       // If we get a unique constraint error, try to update instead
       if (accountError && accountError.code === '23505') {
